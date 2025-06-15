@@ -2,6 +2,8 @@
 using PartnerTransactionAPI.Models;
 using PartnerTransactionAPI.Helpers;
 using System.Text;
+using Serilog;
+
 
 namespace PartnerTransactionAPI.Controllers
 {
@@ -18,6 +20,9 @@ namespace PartnerTransactionAPI.Controllers
         [HttpPost]
         public IActionResult Post([FromBody] TransactionRequest request)
         {
+            // Log the incoming request
+            Log.Information("Incoming Request: {@Request}", request);
+
             // Step 1: Validate required fields
             if (string.IsNullOrWhiteSpace(request.partnerkey) ||
                 string.IsNullOrWhiteSpace(request.partnerrefno) ||
@@ -26,6 +31,8 @@ namespace PartnerTransactionAPI.Controllers
                 string.IsNullOrWhiteSpace(request.sig) ||
                 request.totalamount <= 0)
             {
+                Log.Information("Validation failed: Missing or invalid required fields.");
+
                 return BadRequest(new TransactionResponse
                 {
                     result = 0,
@@ -36,6 +43,8 @@ namespace PartnerTransactionAPI.Controllers
             // Step 2: Validate partner credentials
             if (!AllowedPartners.TryGetValue(request.partnerkey, out var expectedPassword))
             {
+                Log.Information("Validation failed: Access Denied!");
+
                 return Unauthorized(new TransactionResponse
                 {
                     result = 0,
@@ -50,6 +59,8 @@ namespace PartnerTransactionAPI.Controllers
             }
             catch
             {
+                Log.Information("Validation failed: Invalid Partner Password (decoding error).");
+
                 return Unauthorized(new TransactionResponse
                 {
                     result = 0,
@@ -59,6 +70,8 @@ namespace PartnerTransactionAPI.Controllers
 
             if (decodedPassword != expectedPassword)
             {
+                Log.Information("Validation failed: Invalid Partner Password (mismatch).");
+
                 return Unauthorized(new TransactionResponse
                 {
                     result = 0,
@@ -74,6 +87,8 @@ namespace PartnerTransactionAPI.Controllers
             }
             catch
             {
+                Log.Information("Validation failed: Invalid timestamp format.");
+
                 return BadRequest(new TransactionResponse
                 {
                     result = 0,
@@ -90,6 +105,8 @@ namespace PartnerTransactionAPI.Controllers
                 //if use sample from question (testing), must turn this feature off as the sample is old date match valid sig.
                 //if use new sample date (real production), turn this feature on but need generate new sig insert in json to make singature valid
                 /*
+                Log.Information("Validation failed: Expired timestamp.");
+
                 return Unauthorized(new TransactionResponse
                 {
                     result = 0,
@@ -109,6 +126,8 @@ namespace PartnerTransactionAPI.Controllers
                         //comment this if want test discount with qty more than 5
                         /* || item.qty > 5 */ )
                     {
+                        Log.Information("Validation failed: Invalid item detail provided.");
+
                         return BadRequest(new TransactionResponse
                         {
                             result = 0,
@@ -120,6 +139,8 @@ namespace PartnerTransactionAPI.Controllers
                 long itemsTotal = request.items.Sum(i => i.unitprice * i.qty);
                 if (itemsTotal != request.totalamount)
                 {
+                    Log.Information("Validation failed: Invalid Total Amount.");
+
                     return BadRequest(new TransactionResponse
                     {
                         result = 0,
@@ -189,14 +210,17 @@ namespace PartnerTransactionAPI.Controllers
 
 
             // Final response
-            return Ok(new TransactionResponse
+            var response = new TransactionResponse
             {
                 result = 1,
                 totalamount = request.totalamount,
                 totaldiscount = totalDiscount,
                 finalamount = finalAmount,
                 resultmessage = "Transaction submitted successfully"
-            });
+            };
+
+            Log.Information("Outgoing Response: {@Response}", response);
+            return Ok(response);
 
 
         }
